@@ -9,7 +9,6 @@
 import Cocoa
 import Yams
 import EonilFSEvents
-import SwiftyStoreKit
 
 @NSApplicationMain
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
@@ -17,6 +16,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let menuManager = MenuManager()
     
     func applicationDidFinishLaunching(_ aNotification: Notification) {
+        
         if let button = statusItem.button {
             statusBarButton = button
             statusBarButton.image = NSImage(named:NSImage.Name("kubernetes-icon"))
@@ -59,26 +59,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if isPro || isExistingUserPrePro == existingUserPreProTrue {
             maxNofContexts = unlimitedNofContexts
         }
-        
-        SwiftyStoreKit.completeTransactions(atomically: true) { purchases in
-            for purchase in purchases {
-                switch purchase.transaction.transactionState {
-                case .purchased, .restored:
-                    if purchase.needsFinishTransaction {
-                        // Deliver content from server, then:
-                        SwiftyStoreKit.finishTransaction(purchase.transaction)
-                    }
-                // Unlock content
-                case .failed, .purchasing, .deferred:
-                    break // do nothing
-                }
-            }
-        }
     }
     
     func prepareForTesting(){
         NSLog ("UI Testing Mode")
-        bookmarksFile = "TestBookmarks.dict"
+        let bookmarksFile = "TestBookmarks.dict"
         uiTesting = true
         let fileManager = FileManager.default
         
