@@ -10,10 +10,10 @@ import Foundation
 import Cocoa
 import os
 import Yams
-import EonilFSEvents
 
-var bookmarksFile = "Bookmarks.dict"
-var bookmarks = [URL: Data]()
+let bookmarks = Bookmarks.restore() ?? Bookmarks(data: [:])
+
+var configPathProperty = "config_path"
 
 func openFolderSelection() -> URL?
 {
@@ -45,6 +45,16 @@ func openFolderSelection() -> URL?
     }
 }
 
+func getConfigFileUrl() -> URL?
+{
+    if bookmarks.data.count>0 {
+        if let first = bookmarks.data.first {
+            return first.key
+        }
+    }
+    return nil
+}
+
 func saveFolderSelection() -> URL?
 {
     let dialog = NSSavePanel();
@@ -67,94 +77,6 @@ func saveFolderSelection() -> URL?
         return nil
     }
 }
-
-func saveBookmarksData()
-{
-    NSLog("deleting old bookmark file...")
-    let fileManager = FileManager.default
-    let path = getBookmarkPath()
-    do {
-        if fileManager.isReadableFile(atPath: path) {
-            try fileManager.removeItem(atPath: path)
-        }
-    } catch {
-        NSLog("Error: could not delete old bookmark file: \(error)")
-    }
-    
-    NSKeyedArchiver.archiveRootObject(bookmarks, toFile: path)
-}
-
-func storeFolderInBookmark(url: URL)
-{
-    do
-    {
-        let data = try url.bookmarkData(options: NSURL.BookmarkCreationOptions.withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
-        bookmarks.removeAll()
-        bookmarks[url] = data
-    }
-    catch
-    {
-        NSLog ("Error storing bookmarks \(error)")
-    }
-    
-}
-
-func getBookmarkPath() -> String
-{
-    var url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0] as URL
-    url = url.appendingPathComponent(bookmarksFile)
-    return url.path
-}
-
-func loadBookmarks() -> URL?
-{
-    let path = getBookmarkPath()
-    //print("Bookmarks path: " + path )
-    if let bookmarks = NSKeyedUnarchiver.unarchiveObject(withFile: path) {
-        
-        for bookmark in bookmarks as! [URL: Data]
-        {
-            return restoreBookmark(bookmark)
-        }
-    }
-    return nil
-}
-
-func restoreBookmark(_ bookmark: (key: URL, value: Data)) -> URL?
-{
-    let restoredUrl: URL?
-    var isStale = false
-    
-    //print ("Restoring \(bookmark.key)")
-    do
-    {
-        restoredUrl = try URL.init(resolvingBookmarkData: bookmark.value, options: NSURL.BookmarkResolutionOptions.withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &isStale)
-    }
-    catch
-    {
-        NSLog("Error restoring bookmarks \(error)")
-        restoredUrl = nil
-    }
-    
-    if let url = restoredUrl
-    {
-        if isStale
-        {
-            NSLog ("URL is stale")
-            return nil
-        }
-        else
-        {
-            if !url.startAccessingSecurityScopedResource()
-            {
-                NSLog ("Couldn't access: \(url.path)")
-                return nil
-            }
-        }
-    }
-    return restoredUrl
-}
-
 
 func selectKubeconfigFile() throws {
     NSLog("will select kubeconfig file...")
@@ -209,7 +131,7 @@ extension String {
             .map { match -> Substring in
                 let range = Range(match.range(at: 1), in: self)!
                 return self[range]
-        }
+            }
         
         return results.joined(separator: "\n")
     }

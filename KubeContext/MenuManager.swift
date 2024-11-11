@@ -50,18 +50,13 @@ class MenuManager: NSObject, NSMenuDelegate {
             let storyboard = NSStoryboard(name: NSStoryboard.Name("Manage"), bundle: nil)
             manageController = storyboard.instantiateInitialController() as? NSWindowController
         }
-
+        
         if (manageController != nil) {
             manageController!.showWindow(sender)
             manageController!.window?.orderFrontRegardless()
         }
-        if sender.title == "Import Kubeconfig File" {
-            if let a = manageController?.contentViewController as? ManageViewController {
-                a.lockButtonAction(self)
-            }
-        }
     }
-
+    
     @objc func importConfig(_ sender: NSMenuItem) {
         NSLog("will import file...")
         if k8s == nil {
@@ -107,16 +102,6 @@ class MenuManager: NSObject, NSMenuDelegate {
         let centerParagraphStyle = NSMutableParagraphStyle.init()
         centerParagraphStyle.alignment = .center
         
-        // Current Context Title
-        let currentContextTitleItem = NSMenuItem(title: "", action: #selector(logClick(_:)), keyEquivalent: "")
-        currentContextTitleItem.target=self
-        let contextTitle = NSAttributedString.init(string: "Current Context", attributes: [NSAttributedString.Key.paragraphStyle: centerParagraphStyle, NSAttributedString.Key.font: NSFont.boldSystemFont(ofSize: 14)])
-        currentContextTitleItem.attributedTitle = contextTitle
-        menu.addItem(currentContextTitleItem)
-        
-        // Current Context Text
-        let switchContextSubmenu = NSMenu()
-        
         var config: Config!
         do {
             config = try k8s.getConfig()
@@ -129,42 +114,30 @@ class MenuManager: NSObject, NSMenuDelegate {
         
         let currentContext = config.CurrentContext
         let ctxs = config.Contexts
-        for ctx in ctxs {
-            let ctxMenuItem = NSMenuItem(title: ctx.Name, action: #selector(toggleState(_:)), keyEquivalent: "")
-            ctxMenuItem.target = self
-            if ctx.Name == currentContext {
-                ctxMenuItem.state = .on
+        if ctxs.count < 1 {
+            let noCtxMenuItem = NSMenuItem(title: "No contexts in config file", action: nil, keyEquivalent: "")
+            menu.addItem(noCtxMenuItem)
+        }else{
+            for ctx in config.Contexts {
+                let ctxMenuItem = NSMenuItem(title: ctx.Name, action: #selector(toggleState(_:)), keyEquivalent: "")
+                ctxMenuItem.target = self
+                if ctx.Name == currentContext {
+                    ctxMenuItem.state = .on
+                }
+                menu.addItem(ctxMenuItem)
             }
-            switchContextSubmenu.addItem(ctxMenuItem)
         }
-        
-        if switchContextSubmenu.items.count < 1 {
-            let noCtxMenuItem = NSMenuItem(title: "No more contexts", action: nil, keyEquivalent: "")
-            switchContextSubmenu.addItem(noCtxMenuItem)
-        }
-        
-        let currentContextTextItem = NSMenuItem(title: "", action: #selector(logClick(_:)), keyEquivalent: "")
-        currentContextTextItem.target = self
-        let currentContextText = NSAttributedString.init(string: currentContext?.wrap(limit: 32) ?? "", attributes: [NSAttributedString.Key.paragraphStyle: centerParagraphStyle])
-        currentContextTextItem.attributedTitle = currentContextText
-        menu.addItem(currentContextTextItem)
         
         // Seperator
         menu.addItem(NSMenuItem.separator())
-        
-        // Switch Context
-        let switchContextMenuItem = NSMenuItem(title: "Switch Context", action: nil, keyEquivalent: "c")
-        switchContextMenuItem.target = self
-        menu.addItem(switchContextMenuItem)
-        // Switch Context Submenu
-        menu.setSubmenu(switchContextSubmenu, for: switchContextMenuItem)
         
         // Import Kubeconfig file
         var importAction = #selector(importConfig(_:))
         if ctxs.count >= maxNofContexts {
             importAction = #selector(openManagement(_:))
         }
-
+        
+        menu.addItem(NSMenuItem.separator())
         let importKubeconfigMenuItem = NSMenuItem(title: "Import Kubeconfig File", action: importAction, keyEquivalent: "i")
         importKubeconfigMenuItem.target = self
         menu.addItem(importKubeconfigMenuItem)

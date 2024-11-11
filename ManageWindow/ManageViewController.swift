@@ -7,7 +7,6 @@
 //
 
 import Cocoa
-import SwiftyStoreKit
 
 class ManageViewController: NSViewController, NSWindowDelegate {
     let fileManager = FileManager.default
@@ -31,9 +30,6 @@ class ManageViewController: NSViewController, NSWindowDelegate {
     
     @IBOutlet weak var setIconColorCheckbox: NSButton!
     @IBOutlet weak var iconColorWell: NSColorWell!
-    
-    @IBOutlet weak var contextLockButton: NSButton!
-    @IBOutlet weak var iconColorLockButton: NSButton!
     
     @IBOutlet weak var bottomSegmentedControl: NSSegmentedControl!
     
@@ -80,8 +76,6 @@ class ManageViewController: NSViewController, NSWindowDelegate {
     }
 
     func unlockAll() {
-        self.contextLockButton.isHidden = true
-        self.iconColorLockButton.isHidden = true
         self.showContextCheckbox.isEnabled = true
         self.setIconColorCheckbox.isEnabled = true
         
@@ -365,25 +359,13 @@ class ManageViewController: NSViewController, NSWindowDelegate {
         
         switch sender.selectedSegment {
         case 0:
-            if bottomSegmentedControl.image(forSegment: 0)?.name() == "lock" {
-                lockButtonAction(self)
-            } else {
-                importContext()
-            }
+            importContext()
         case 1:
             removeCurrentContext()
         case 2:
-            if bottomSegmentedControl.image(forSegment: 2)?.name() == "lock" {
-                lockButtonAction(self)
-            } else {
-                addNewContext()
-            }
+            addNewContext()
         case 3:
-            if bottomSegmentedControl.image(forSegment: 3)?.name() == "lock" {
-                lockButtonAction(self)
-            } else {
-                exportSelectedContext()
-            }
+            exportSelectedContext()
         default:
             NSLog("Unknown segment in bottom controls")
         }
@@ -562,7 +544,7 @@ class ManageViewController: NSViewController, NSWindowDelegate {
     
     func restoreOriginal() {
         do {
-            let kubeconfigFileUrl = loadBookmarks()
+            let kubeconfigFileUrl = getConfigFileUrl()
             let origConfigURL = getOrigKubeconfigFileUrl()
             let _ = try fileManager.replaceItemAt(kubeconfigFileUrl!, withItemAt: origConfigURL!, backupItemName: "kubeconfig.kubecontext")
             k8s.kubeconfig = nil
@@ -605,118 +587,6 @@ class ManageViewController: NSViewController, NSWindowDelegate {
         applyButton.isEnabled = true
         revertButton.isEnabled = true
     }
-    
-    @IBAction func lockButtonAction(_ sender: Any) {
-        let informativeText = """
-This will enable you to upgrade to the full version and use all features and functions:
-
-* Unlimited number of contexts
-(free version is limited to \(maxContextsForFree) contexts)
-        
-* Show current context name in menu bar
-        
-* Assign icon colors for contexts -macOS 10.14 or later-
-(e.g. "red" when you're on prod context)
-        
-* Export single context as a kubeconfig file
-        
-"""
-        let alert = NSAlert()
-        alert.icon = NSImage.init(named: "kubernetes")
-        alert.addButton(withTitle: "Cancel")
-        if proProductPriceString == "" {
-            alert.messageText = "Retrieving product information..."
-            let spinner = NSProgressIndicator(frame: NSMakeRect(0,0,60,60))
-            spinner.style = .spinning
-            spinner.startAnimation(self)
-            alert.accessoryView = spinner
-            
-            SwiftyStoreKit.retrieveProductsInfo([proProductId]) { result in
-                if let product = result.retrievedProducts.first {
-                    proProductPriceString = product.localizedPrice!
-                    DispatchQueue.main.async {
-                        alert.accessoryView = nil
-                        spinner.stopAnimation(self)
-                        spinner.isHidden = true
-                        alert.messageText = "Purchase Full Version"
-                        alert.informativeText = informativeText + "\n\nFor " + proProductPriceString
-                        alert.addButton(withTitle: "Yes")
-                        alert.addButton(withTitle: "Restore Purchases")
-                        alert.layout()
-                    }
-                    NSLog("Product: \(product.localizedDescription), price: \(proProductPriceString)")
-                }
-                else if let invalidProductId = result.invalidProductIDs.first {
-                    NSLog("Invalid product identifier: \(invalidProductId)")
-                }
-                else {
-                    NSLog("Error: \(String(describing: result.error))")
-                }
-            }
-        } else {
-            alert.addButton(withTitle: "Yes")
-            alert.addButton(withTitle: "Restore Purchases")
-            alert.messageText = "Purchase Full Version"
-            alert.informativeText = informativeText + "\n\nFor " + proProductPriceString
-            
-        }
-        alert.beginSheetModal(for: self.view.window!) { (returnCode: NSApplication.ModalResponse) -> Void in
-            NSLog ("Restore confirmation returnCode: \(returnCode)")
-            if returnCode == NSApplication.ModalResponse(rawValue: 1001) {
-                SwiftyStoreKit.purchaseProduct(proProductId, quantity: 1, atomically: true) { result in
-                    switch result {
-                    case .success(let purchase):
-                        NSLog("Purchase Success: \(purchase.productId)")
-                        UserDefaults.standard.set(true, forKey: keyPro)
-                        DispatchQueue.main.async {
-                            self.unlockAll()
-                        }
-                    case .error(let error):
-                        switch error.code {
-                        case .unknown: NSLog("Unknown error. Please contact support")
-                        case .clientInvalid: NSLog("Not allowed to make the payment")
-                        case .paymentCancelled: break
-                        case .paymentInvalid: NSLog("The purchase identifier was invalid")
-                        case .paymentNotAllowed: NSLog("The device is not allowed to make the payment")
-                        case .storeProductNotAvailable: NSLog("The product is not available in the current storefront")
-                        case .cloudServicePermissionDenied: NSLog("Access to cloud service information is not allowed")
-                        case .cloudServiceNetworkConnectionFailed: NSLog("Could not connect to the network")
-                        case .cloudServiceRevoked: NSLog("User has revoked permission to use this cloud service")
-                        default: NSLog((error as NSError).localizedDescription)
-                        }
-                    }
-                }
-            } else if returnCode == NSApplication.ModalResponse(rawValue: 1002) {
-                SwiftyStoreKit.restorePurchases(atomically: true) { results in
-                    if results.restoreFailedPurchases.count > 0 {
-                        NSLog("Restore Failed: \(results.restoreFailedPurchases)")
-                        DispatchQueue.main.async {
-                        self.alertUserWithWarning(message: "Restore Failed: \(results.restoreFailedPurchases)")
-                        }
-                    }
-                    else if results.restoredPurchases.count > 0 {
-                        NSLog("Restore Success: \(results.restoredPurchases)")
-                        if results.restoredPurchases[0].productId == proProductId {
-                            NSLog("Restore Success: \(proProductId)")
-                            UserDefaults.standard.set(true, forKey: keyPro)
-                            DispatchQueue.main.async {
-                                self.alertUserWithWarning(message: "Successfully restored KubeContext Pro!")
-                                self.unlockAll()
-                            }
-                        }
-                    }
-                    else {
-                        NSLog("Nothing to Restore")
-                        DispatchQueue.main.async {
-                            self.alertUserWithWarning(message: "Nothing to Restore!")
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    
 }
 
 extension ManageViewController: NSTextFieldDelegate {

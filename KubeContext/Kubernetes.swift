@@ -18,7 +18,7 @@ let contextChangedCallback: (EonilFSEventsEvent) -> () = {_ in
         do {
             try showContextName()
         } catch {
-            NSLog("Error occured while trying to set statusBarButton in contextChangedCallback %@", error as NSError) 
+            NSLog("Error occured while trying to set statusBarButton in contextChangedCallback %@", error as NSError)
         }
     }
     //print("event: ", e)
@@ -29,18 +29,20 @@ let contextChangedCallback: (EonilFSEventsEvent) -> () = {_ in
 
 func showContextName() throws {
     let currContext: String = try (k8s.getConfig()?.CurrentContext) ?? ""
+    var title: String = ""
+    var attr: [NSAttributedString.Key: Any] = [:]
     if k8s.shouldShowContextName {
-        statusBarButton.title = currContext.truncated(limit: 20, position: String.TruncationPosition.middle, leader: "...")
+        title = currContext.truncated(limit: 20, position: String.TruncationPosition.middle, leader: "...")
     } else {
-        statusBarButton.title = ""
+        title = ""
     }
-    if #available(OSX 10.14, *) {
-        if let c = UserDefaults.standard.color(forKey: keyIconColorPrefix + currContext) {
-            statusBarButton.contentTintColor = c
-        } else {
-            statusBarButton.contentTintColor = nil
-        }
+    if let c = UserDefaults.standard.color(forKey: keyIconColorPrefix + currContext) {
+        attr[NSAttributedString.Key.foregroundColor] = c
     }
+    
+    
+    let myAttrString = NSAttributedString(string: title, attributes: attr)
+    statusBarButton.attributedTitle = myAttrString
 }
 
 class Kubernetes {
@@ -49,18 +51,12 @@ class Kubernetes {
     var shouldShowContextName:Bool
     var iconColor: NSColor?
     var watcher: EonilFSEventStream!
-
+    
     init() {
         shouldShowContextName = UserDefaults.standard.bool(forKey: keyShowContextOnMenu)
-        let f = loadBookmarks()
-        if f == nil {
-            return
-        }
-    
-        if kubeconfig == nil || kubeconfig != f {
-            kubeconfig = f
-            initWatcher()
-        }
+        let f = getConfigFileUrl()
+        _ = try? setKubeconfig(configFile: f)
+
     }
     
     func setShowContextName(show: Bool) {
@@ -76,15 +72,20 @@ class Kubernetes {
         if configFile == nil {
             return
         }
-        let _ = try loadConfig(url: configFile!)
         
+        do {
+            let _ = try loadConfig(url: configFile!)
+        } catch {
+            NSLog("error loading config \(error)")
+            return
+        }
         if kubeconfig == nil || kubeconfig != configFile {
             kubeconfig = configFile
             initWatcher()
         }
         backupKubeconfig()
-        storeFolderInBookmark(url: configFile!)
-        saveBookmarksData()
+        bookmarks.store(url: configFile!)
+        bookmarks.dump()
     }
     
     func initWatcher(){
@@ -123,12 +124,11 @@ class Kubernetes {
     
     private func loadConfig(url: URL) throws -> Config? {
         // TODO: return error as well
-        let fileContent = try String(contentsOf: url, encoding: .utf8)
+        let fileContent = try String(contentsOfFile: url.path, encoding: .utf8)
         
         let decoder = YAMLDecoder()
         var config = try decoder.decode(Config.self, from: fileContent)
         
-
         for (i, ctx) in config.Contexts.enumerated() {
             if #available(OSX 10.13, *) {
                 if let c = UserDefaults.standard.color(forKey: keyIconColorPrefix + ctx.Name) {
@@ -136,7 +136,7 @@ class Kubernetes {
                 }
             }
         }
-
+        
         return config
     }
     
@@ -182,7 +182,7 @@ class Kubernetes {
         }
         return mergedConfig
     }
-        
+    
     func importConfig(configToImportFileUrl: URL) throws {
         let mainConfig = try loadConfig(url: kubeconfig!)
         
